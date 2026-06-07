@@ -43,24 +43,24 @@ git clone [https://github.com/DevangM03/ai-chat-summarizer.git](https://github.c
 ```
 **2. Navigate to the project directory:**
 ```bash
-`cd ai-chat-summarizer`
+cd ai-chat-summarizer
 ```
 **3. Install dependencies:**
 ```bash
-`npm install`
+npm install
 ```
 **4. Set up environment variables:**
 Create a `.env` file in the root directory and add your specific configuration details:
 ```bash
-`REACT_APP_FIREBASE_API_KEY=your_firebase_api_key`
-`REACT_APP_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain`
-`REACT_APP_FIREBASE_PROJECT_ID=your_firebase_project_id`
-`REACT_APP_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket`
-`REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_firebase_sender_id`
-`REACT_APP_FIREBASE_APP_ID=your_firebase_app_id`
-`REACT_APP_GEMINI_API_KEY=your_gemini_api_key`
+REACT_APP_FIREBASE_API_KEY=your_firebase_api_key
+REACT_APP_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
+REACT_APP_FIREBASE_PROJECT_ID=your_firebase_project_id
+REACT_APP_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_firebase_sender_id
+REACT_APP_FIREBASE_APP_ID=your_firebase_app_id
+REACT_APP_GEMINI_API_KEY=your_gemini_api_key
 ```
 **5. Start the development server:**
 ```bash
-`npm start`
+npm start
 ```

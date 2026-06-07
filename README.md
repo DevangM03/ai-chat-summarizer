@@ -40,7 +40,7 @@ Ensure you have Node.js installed on your machine. You will also need a Firebase
 **1. Clone the repository:**
 ```bash
 git clone [https://github.com/DevangM03/ai-chat-summarizer.git](https://github.com/DevangM03/ai-chat-summarizer.git)
-
+```
 **2. Navigate to the project directory:**
 `cd ai-chat-summarizer`
 

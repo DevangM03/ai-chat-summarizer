@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 
 // Your web app's new Firebase configuration from the console
 const firebaseConfig = {
-  apiKey: "AIzaSyDmgH1YVTbQj2GRmdnLB2nIb1j5W6CYOYU",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: "ai-chat-summarizer-a4b81.firebaseapp.com",
   projectId: "ai-chat-summarizer-a4b81",
   storageBucket: "ai-chat-summarizer-a4b81.firebasestorage.app",

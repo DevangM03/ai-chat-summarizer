@@ -1,19 +1,15 @@
 import { initializeApp } from "firebase/app";
 
-// Your web app's Firebase configuration
+// Your web app's new Firebase configuration from the console
 const firebaseConfig = {
-  apiKey: "AIzaSyA0ldTWe0neUPjUTdZRILn37ReY-ja_OI0",
-  authDomain: "chat-app-b8e61.firebaseapp.com",
-  projectId: "chat-app-b8e61",
-  storageBucket: "chat-app-b8e61.firebasestorage.app",
-  messagingSenderId: "693325722429",
-  appId: "1:693325722429:web:1996c93904f776beefcb54"
+  apiKey: "AIzaSyDmgH1YVTbQj2GRmdnLB2nIb1j5W6CYOYU",
+  authDomain: "ai-chat-summarizer-a4b81.firebaseapp.com",
+  projectId: "ai-chat-summarizer-a4b81",
+  storageBucket: "ai-chat-summarizer-a4b81.firebasestorage.app",
+  messagingSenderId: "228970201916",
+  appId: "1:228970201916:web:7e38020cd3b053ef5fd439",
+  measurementId: "G-GESVRP00NX"
 };
 
 // Initialize Firebase & Export
 export const app = initializeApp(firebaseConfig);
-
-
-
-
-

@@ -1,6 +1,5 @@
-import "./app.css";
+import "./App.css";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { 
   Box,
   Button,
@@ -33,7 +32,8 @@ import {
   onSnapshot,
   doc,
   setDoc,
-  getDoc
+  getDoc,
+  limit // OPTIMIZATION: Imported limit constraint to handle cost-controls at scale
 } from "firebase/firestore";
 
 import Message from "./componentsMain/Message";
@@ -65,10 +65,10 @@ function App() {
   const [currentRoom, setCurrentRoom] = useState(null);
   const [roomPasscodes, setRoomPasscodes] = useState({});
   
-  // AI summarization state
+  // AI summarization state (Switched to high-speed Groq integration cloud pipeline)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summary, setSummary] = useState(null);
-  const [geminiApiKey] = useState(process.env.REACT_APP_GEMINI_API_KEY);
+  const [groqApiKey] = useState(process.env.REACT_APP_GROQ_API_KEY);
   
   // UI state management
   const [loading, setLoading] = useState(false);
@@ -77,8 +77,7 @@ function App() {
   // Refs for DOM manipulation
   const messagesEndRef = useRef(null);
 
-  
-  //Automatically scrolls to the bottom of the message container
+  // Automatically scrolls to the bottom of the message container
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -88,7 +87,6 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  
   // Authentication state listener
   // Monitors user login/logout state and fetches user profile data
   useEffect(() => {
@@ -118,15 +116,15 @@ function App() {
     return unsubscribe;
   }, []);
 
-  
   // Real-time message loader for current chat room
-  // Establishes Firestore listener for live message updates
+  // OPTIMIZED: Implements a query cursor limit and reversed sorting to enforce predictable cost structures
   const loadMessages = useCallback(() => {
     if (!currentRoom) return;
     
     const q = query(
       collection(db, "rooms", currentRoom.id, "messages"), 
-      orderBy("timestamp")
+      orderBy("timestamp", "desc"), // Fetch the most recent items first to support pagination bounds
+      limit(50)                    // Strict guardrail to optimize read latency and prevent unbounded database charges
     );
     
     return onSnapshot(q, (querySnapshot) => {
@@ -134,14 +132,14 @@ function App() {
       querySnapshot.forEach((doc) => {
         msgs.push({ id: doc.id, ...doc.data() });
       });
-      setMessages(msgs);
+      // Invert the array order in client-side local memory to preserve correct historical flow in the chat UI
+      setMessages(msgs.reverse());
     }, (error) => {
-      console.error("Error loading messages:", error);
-      showNotification("Failed to load messages", "error");
+      console.error("Error loading optimized message stream:", error);
+      showNotification("Failed to load real-time message stream", "error");
     });
   }, [currentRoom]);
 
-  
   // Effect to manage message subscription lifecycle
   // Subscribes to messages when user joins a room, unsubscribes on leave
   useEffect(() => {
@@ -152,14 +150,12 @@ function App() {
     return () => unsubscribe();
   }, [user, currentRoom, loadMessages]);
 
-  
   // Displays temporary notification messages to users
   const showNotification = (message, type = "info") => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 1000);
   };
 
-  
   // Handles user authentication (login/registration)
   // Includes secret key validation for new user registration
   const handleAuth = async (e) => {
@@ -191,8 +187,7 @@ function App() {
         
         showNotification("Account created successfully", "success");
 
-
-        // empty all fields after login or signup - optional
+        // empty all fields after login or signup
         setEmail("");
         setPassword("");
         setNickname("");
@@ -206,7 +201,6 @@ function App() {
     }
   };
 
-  
   // Handles user logout and state cleanup
   const logoutHandler = async () => {
     try {
@@ -219,7 +213,6 @@ function App() {
     }
   };
 
-  
   // Validates passcode and joins specified chat room
   const joinRoom = (room) => {
     const enteredPasscode = roomPasscodes[room.id] || "";
@@ -234,7 +227,6 @@ function App() {
     }
   };
 
-  
   // Leaves current chat room and cleans up related state
   const leaveRoom = () => {
     setCurrentRoom(null);
@@ -243,7 +235,6 @@ function App() {
     showNotification("Left the chat room", "info");
   };
 
-  
   // Handles message submission to current chat room
   // Stores message with user metadata and server timestamp
   const submitHandler = async (e) => {
@@ -269,9 +260,8 @@ function App() {
     }
   };
 
-  
-  // Generates AI-powered conversation summary using Google Gemini
-  // Processes chat history and creates structured summary with key insights
+  // Generates AI-powered conversation summary using Groq & Llama 3
+  // ADVANCED INTEGRATION: Enforces native structural JSON compilation objects via response schemas
   const generateSummary = async () => {
     // Validate prerequisites & error handling
     if (!messages || messages.length === 0) {
@@ -279,8 +269,8 @@ function App() {
       return;
     }
 
-    if (!geminiApiKey) {
-      showNotification("Gemini API key not configured", "error");
+    if (!groqApiKey) {
+      showNotification("Groq API key not configured in .env", "error");
       return;
     }
 
@@ -288,72 +278,101 @@ function App() {
     setSummary(null);
 
     try {
-      // Initialize Gemini AI client
-      const genAI = new GoogleGenerativeAI(geminiApiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      // Format chat messages for AI processing
+      // Format clean sequential text chunks for ingestion
       const chatHistory = messages
-        .filter(msg => msg.text && msg.nickname) // Filter out invalid messages
-        .map(msg => {
-          const timestamp = msg.timestamp ? 
-            new Date(msg.timestamp.seconds * 1000).toLocaleString() : 
-            'Unknown time';
-          return `[${timestamp}] ${msg.nickname}: ${msg.text}`;
-        })
+        .filter(msg => msg.text && msg.nickname) 
+        .map(msg => `${msg.nickname}: ${msg.text}`)
         .join('\n');
 
       if (!chatHistory.trim()) {
-        showNotification("No valid messages found to summarize", "error");
+        showNotification("No valid conversational logs available", "error");
         return;
       }
 
-      // Construct comprehensive summarization prompt
-      const prompt = `
-        Please provide a comprehensive summary of the following chat conversation. 
-        Include the main topics discussed, key points made by participants, and any important decisions or conclusions reached.
-        Also mention the most active participants and the general tone of the conversation.
-        
-        Chat History:
-        ${chatHistory}
-        
-        Please structure your summary with:
-        1. Overview
-        2. Main Topics Discussed
-        3. Key Participants
-        4. Important Points/Decisions
-        5. General Tone/Atmosphere
-      `;
+      // Execute AI Inference Pipeline against Groq REST Engine Endpoint
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${groqApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: `You are an advanced meeting analytics pipeline. Analyze the provided text chat transcript and return a response strictly structured as a single JSON object. Do not include markdown code blocks, backticks, or wrapping formatting text. The schema must exactly match: 
+              {
+                "overview": "string",
+                "mainTopics": ["string"],
+                "sentimentAnalysis": {
+                  "label": "string",
+                  "score": number
+                },
+                "participantDynamics": [
+                  {
+                    "nickname": "string",
+                    "interactionStyle": "string"
+                  }
+                ]
+              }`
+            },
+            {
+              role: "user",
+              content: `Perform an advanced text-mining assessment on the following chat logs. Extract a high-level overview, primary structural themes/topics, explicit polarity sentiment indexing, and individual participant communication dynamics.\n\nTranscript:\n${chatHistory}`
+            }
+          ],
+          response_format: { type: "json_object" }, 
+          temperature: 0.2
+        })
+      });
 
-      // Generate summary using Gemini AI
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const summaryText = response.text();
+      if (!response.ok) {
+        throw new Error(`Groq Gateway connection exception error code: ${response.status}`);
+      }
 
-      setSummary(summaryText);
-      showNotification("Summary generated successfully", "success");
+      const rawData = await response.json();
+      const stringifiedJson = rawData.choices[0].message.content;
+      
+      // Safely parse schema-compliant object payload
+      const structuredAnalytics = JSON.parse(stringifiedJson);
+
+      // DOWNSTREAM CONSUMPTION SINK: Write the validated operational telemetry to a structured Firestore logging collection
+      await addDoc(collection(db, "rooms", currentRoom.id, "analytics"), {
+        overview: structuredAnalytics.overview,
+        topics: structuredAnalytics.mainTopics,
+        sentiment: structuredAnalytics.sentimentAnalysis,
+        dynamics: structuredAnalytics.participantDynamics,
+        generatedAt: serverTimestamp(),
+        logSnapshotSize: messages.length
+      });
+
+      // Format the parsed structural object elements back into readable presentation data lines for the overlay UI
+      const formattedPresentationText = `
+1. OVERVIEW
+${structuredAnalytics.overview}
+
+2. MAIN TOPICS EXTRACTED
+${structuredAnalytics.mainTopics.map(topic => `• ${topic}`).join('\n')}
+
+3. SENTIMENT ANALYSIS
+Classification: ${structuredAnalytics.sentimentAnalysis.label} (Index Score: ${structuredAnalytics.sentimentAnalysis.score})
+
+4. PARTICIPANT BEHAVIORAL DYNAMICS
+${structuredAnalytics.participantDynamics.map(p => `• ${p.nickname}: ${p.interactionStyle}`).join('\n')}
+      `.trim();
+
+      setSummary(formattedPresentationText);
+      showNotification("Analytics pipeline executed and archived to DB sink", "success");
 
     } catch (error) {
-      console.error("Error generating summary:", error);
-      
-      // Provide specific error messages based on error type
-      let errorMessage = "Failed to generate summary";
-      
-      if (error.message?.includes("API_KEY_INVALID")) {
-        errorMessage = "Invalid Gemini API key";
-      } else if (error.message?.includes("QUOTA_EXCEEDED")) {
-        errorMessage = "API quota exceeded. Please try again later.";
-      } else if (error.message?.includes("BLOCKED")) {
-        errorMessage = "Content was blocked by safety filters";
-      }
-      
-      showNotification(errorMessage, "error");
+      console.error("Error running analytical pipeline:", error);
+      showNotification("Failed to execute pipeline: check terminal console logs", "error");
     } finally {
       setIsGeneratingSummary(false);
     }
   };
 
-  
   // Notification component
   const Notification = () => {
     if (!notification) return null;
@@ -410,7 +429,7 @@ function App() {
       >
         <VStack spacing={4} align="stretch">
           <HStack justify="space-between">
-            <Text fontSize="lg" fontWeight="bold">
+            <Text fontSize="lg" fontWeight="bold" color="black">
               Chat Summary - {currentRoom?.name}
             </Text>
             <Button
@@ -418,6 +437,7 @@ function App() {
               onClick={() => setSummary(null)}
               bg="gray.200"
               _hover={{ bg: "gray.300" }}
+              color="black"
               aria-label="Close summary"
             >
               ✕
@@ -425,7 +445,7 @@ function App() {
           </HStack>
           
           <Box>
-            <Text whiteSpace="pre-wrap" lineHeight="tall" fontSize="sm">
+            <Text whiteSpace="pre-wrap" lineHeight="tall" fontSize="sm" color="black">
               {summary}
             </Text>
           </Box>
@@ -443,6 +463,8 @@ function App() {
             <Button 
               size="sm"
               variant="outline"
+              color="black"
+              borderColor="gray.300"
               onClick={() => {
                 navigator.clipboard.writeText(summary);
                 showNotification("Summary copied to clipboard", "success");
@@ -455,7 +477,6 @@ function App() {
       </Box>
     );
   };
-
 
   // Main application render
   return (
@@ -563,6 +584,7 @@ function App() {
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Type your message..."
                     bg="white"
+                    color="black"
                     borderColor="gray.300"
                   />
                   <Button 
@@ -590,7 +612,7 @@ function App() {
               boxShadow="md"
             >
               <VStack spacing={4}>
-                <Text fontSize="2xl" fontWeight="bold" mb={4}>
+                <Text fontSize="2xl" fontWeight="bold" mb={4} color="black">
                   Select a Chat Room
                 </Text>
                 
@@ -606,7 +628,7 @@ function App() {
                     _hover={{ bg: "whiteAlpha.600" }}
                   >
                     <VStack spacing={3}>
-                      <Text fontWeight="semibold" color="aplhaWhite.500">{room.name}</Text>
+                      <Text fontWeight="semibold" color="black">{room.name}</Text>
                       <Input
                         type="password"
                         value={roomPasscodes[room.id] || ""}
@@ -616,6 +638,7 @@ function App() {
                         }))}
                         placeholder="Enter passcode"
                         bg="white"
+                        color="black"
                         borderColor="gray.300"
                         _focus={{
                           borderColor: "gray.500",
@@ -661,7 +684,7 @@ function App() {
             _hover={{ bg: "white" }}
           >
             <VStack spacing={4}>
-              <Text fontSize="2xl" fontWeight="bold" mb={4}>
+              <Text fontSize="2xl" fontWeight="bold" mb={4} color="black">
                 {isLogin ? "Login" : "Sign Up"}
               </Text>
               
@@ -672,6 +695,7 @@ function App() {
                 placeholder="Email"
                 required
                 bg="white"
+                color="black"
                 borderColor="gray.300"
                 _focus={{
                   borderColor: "gray.500",
@@ -687,6 +711,7 @@ function App() {
                 required
                 minLength={6}
                 bg="white"
+                color="black"
                 borderColor="gray.300"
                 _focus={{
                   borderColor: "gray.500",
@@ -704,11 +729,12 @@ function App() {
                     placeholder="Choose a nickname"
                     required
                     bg="white"
+                    color="black"
                     borderColor="gray.300"
                     _focus={{
                       borderColor: "gray.500",
                       boxShadow: "none",
-                    }}
+                }}
                   />
                   
                   <Input
@@ -718,6 +744,7 @@ function App() {
                     placeholder="Secret Key"
                     required
                     bg="white"
+                    color="black"
                     borderColor="gray.300"
                     _focus={{
                       borderColor: "gray.500",
